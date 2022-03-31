@@ -1,0 +1,17 @@
+# hidden files
+.DS_Store
+untidy-data
+csvs
+
+# files
+env.py
+
+# file extensions
+*.csv
+*.xlsx
+
+# hidden folders
+.ipynb_checkpoints/
+
+# folders
+__pycache__/
