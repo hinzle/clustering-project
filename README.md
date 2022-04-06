@@ -1,2 +1,7 @@
-## Clustering Project
-#### codeup/innis
+# Clustering Project
+
+## codeup/innis
+
+## Specification
+
+---
