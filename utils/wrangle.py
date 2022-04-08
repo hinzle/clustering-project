@@ -102,7 +102,10 @@ def clean_df(df):
     
     # Restrict df to only those properties with at least 1 bath & bed 
     df = df[(df.bedroomcnt > 0) & (df.bathroomcnt > 0)]
-            
+
+    # Drop dupes
+    df = df.drop_duplicates()
+
     # Deal with remaining nulls
     df = handle_missing_values(df, prop_required_column = .6, prop_required_row = .75)
     
@@ -112,15 +115,12 @@ def clean_df(df):
     # Create a column that is the age of the property
     df['age'] = 2022 - df.yearbuilt
             
-    # Rename FIPS codes to their respective counties
-    df.fips = df.fips.replace({6037:'los_angeles',
-                           6059:'orange',          
-                           6111:'ventura'})
+
     # Rename 'fips' to 'county
-    df.rename(columns={'fips':'county'}, inplace = True)
+    df=df.rename(columns={'fips':'county'} )
             
     # Determine unnecessary columns
-    cols_to_remove = ['id','calculatedbathnbr', 'finishedsquarefeet12', 'fullbathcnt',
+    cols_to_remove = ['parcelid','id','calculatedbathnbr', 'finishedsquarefeet12', 'fullbathcnt',
               'heatingorsystemtypeid','propertycountylandusecode',
               'propertylandusetypeid','propertyzoningdesc', 
               'propertylandusedesc', 'unitcnt', 'censustractandblock','transactiondate']    
@@ -131,7 +131,17 @@ def clean_df(df):
     
     return df
 
-############################# Split #################################
+############################# Dummies #################################
+
+def dummys(df):
+	cols=df.loc[:,(df.dtypes==object).values].columns.tolist()
+	dummy_df=pd.get_dummies(df[cols],  drop_first=True)
+	df=pd.concat([df, dummy_df], axis=1)
+	df=df.drop(columns=cols)
+	return df
+
+
+############################# t,v,t Split #################################
 
 def split_data(df):
     ''' 
@@ -146,10 +156,20 @@ def split_data(df):
 
  ############################ Outliers #############################
 
-def remove_outliers(df, k, cols):
+def remove_outliers(df, k=3):
     ''' Take in a dataframe, k value, and specified columns within a dataframe 
     and then return the dataframe with outliers removed
     '''
+    cols=['bathroomcnt',
+	'bedroomcnt',
+	'calculatedfinishedsquarefeet',
+	'lotsizesquarefeet',
+	'structuretaxvaluedollarcnt',
+	'taxvaluedollarcnt',
+	'landtaxvaluedollarcnt',
+    'yearbuilt',
+	'taxamount']
+
     for col in cols:
         # Get quartiles
         q1, q3 = df[col].quantile([.25, .75]) 
@@ -167,23 +187,23 @@ def remove_outliers(df, k, cols):
 
 ############################## Scale #################################
 
-def min_max_df(df):
-    '''
-    Scales the df. using the MinMaxScaler()
-    takes in the df and returns the df in a scaled fashion.
-    '''
-    # Make a copy of the original df
-    df = df.copy()
+# def min_max_df(df):
+#     '''
+#     Scales the df. using the MinMaxScaler()
+#     takes in the df and returns the df in a scaled fashion.
+#     '''
+#     # Make a copy of the original df
+#     df = df.copy()
 
-    # Create the scaler
-    scaler = sklearn.preprocessing.MinMaxScaler()
+#     # Create the scaler
+#     scaler = MinMaxScaler()
 
-    # Fit the scaler 
-    scaler.fit(df)
+#     # Fit the scaler 
+#     scaler.fit(df)
 
-    # Transform and rename columns for the df
-    df_scaled = pd.DataFrame(scaler.transform(train), columns = train.columns.tolist())
-    return df_scaled
+#     # Transform and rename columns for the df
+#     df_scaled = pd.DataFrame(scaler.transform(train), columns = train.columns.tolist())
+#     return df_scaled
 
 def min_max_split(train, validate, test):
     '''
@@ -197,7 +217,7 @@ def min_max_split(train, validate, test):
     test_scaled = test.copy()
 
     # Create the scaler
-    scaler = sklearn.preprocessing.MinMaxScaler()
+    scaler = MinMaxScaler()
 
     # Fit scaler on train dataset
     scaler.fit(train)
@@ -209,9 +229,9 @@ def min_max_split(train, validate, test):
 
     return train_scaled, validate_scaled, test_scaled
 
-############################# Wrangle ################################
+############################# Explore ################################
 
-def wrangle_zillow():
+def explore_zillow():
     ''' 
     This function combines both functions above and outputs three 
     cleaned and prepped datasets
@@ -222,7 +242,55 @@ def wrangle_zillow():
     # Get a clean df
     cleaned = clean_df(df)
 
-    # # Split that clean df to ensure minimal data leakage
-    # train, validate, test = split_data(cleaned)
+    # Split that clean df to ensure minimal data leakage
+    train, validate, test = split_data(cleaned)
 
-    return cleaned # train, validate, test
+    return train, validate, test
+
+############################# UML Model ################################
+
+def uml_zillow():
+    ''' 
+    This function combines both functions above and outputs three 
+    cleaned and prepped datasets
+    '''
+    # Acquire the df
+    df = acquire_df()
+
+    # Get a clean df
+    cleaned = clean_df(df)
+
+    # Make dummies
+    dummy=dummys(cleaned)
+
+    # Split that clean df to ensure minimal data leakage
+    train, validate, test = split_data(dummy)
+
+    # Scaling
+    train, validate, test=min_max_split(train, validate, test)
+
+    # Outliers
+    train = remove_outliers(train)
+
+    return train, validate, test
+
+############################# Xy Split ################################
+
+def xy_data(train, validate, test, target=list):
+	'''
+	->: train, validate, test 
+	<-: X_train, y_train, X_validate, y_validate, X_test, y_test
+	'''
+	X_train = train.drop(columns=target)
+	y_train = train[target]
+	X_validate = validate.drop(columns=target)
+	y_validate = validate[target]
+	X_test = test.drop(columns=target)
+	y_test = test[target]
+	return X_train, y_train, X_validate, y_validate, X_test, y_test
+
+############################# SML Model ################################
+
+def sml_zillow(target=list):
+    train, validate, test = uml_zillow()
+    return xy_data(train, validate, test, target)
